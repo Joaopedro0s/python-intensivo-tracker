@@ -1,178 +1,155 @@
-import { useState, useEffect } from "react";
+import { useState } from 'react'
+import { curriculum } from '../data/curriculum'
+import { addSession } from '../db'
 
-const DIFFICULTY_LABELS = ["", "Muito fácil", "Fácil", "Médio", "Difícil", "Muito difícil"];
+export default function LogForm({ onSessionAdded }) {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [duration, setDuration] = useState('')
+  const [week, setWeek] = useState('')
+  const [selectedTopics, setSelectedTopics] = useState([])
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [success, setSuccess] = useState(false)
 
-export default function LogForm({ curriculum, onSave, onCancel, editLog }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const weekData = curriculum.find((w) => w.week === Number(week))
 
-  const [form, setForm] = useState({
-    date: today,
-    topicId: "",
-    hours: "",
-    concepts: "",
-    resources: "",
-    notes: "",
-    difficulty: 3,
-  });
-  const [saving, setSaving] = useState(false);
-  const [errors, setErrors] = useState({});
-  // pomodoro timer
-  const [timer, setTimer] = useState(0);
-  const [timerRunning, setTimerRunning] = useState(false);
-
-  useEffect(() => {
-    if (editLog) {
-      setForm({
-        date: editLog.date || today,
-        topicId: String(editLog.topicId || ""),
-        hours: String(editLog.hours || ""),
-        concepts: editLog.concepts || "",
-        resources: editLog.resources || "",
-        notes: editLog.notes || "",
-        difficulty: editLog.difficulty || 3,
-      });
-    }
-  }, [editLog]);
-
-  useEffect(() => {
-    let interval;
-    if (timerRunning) {
-      interval = setInterval(() => setTimer((t) => t + 1), 1000);
-    }
-    return () => clearInterval(interval);
-  }, [timerRunning]);
-
-  function validate() {
-    const errs = {};
-    if (!form.date) errs.date = "Data obrigatória";
-    if (!form.topicId) errs.topicId = "Selecione um tópico";
-    if (!form.hours || isNaN(form.hours) || Number(form.hours) <= 0) errs.hours = "Horas inválidas";
-    if (!form.concepts.trim()) errs.concepts = "Descreva o que aprendeu";
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
+  function toggleTopic(topic) {
+    setSelectedTopics((prev) =>
+      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
+    )
   }
 
   async function handleSubmit(e) {
-    e.preventDefault();
-    if (!validate()) return;
-    setSaving(true);
-    await onSave({ ...form, topicId: Number(form.topicId), hours: Number(form.hours) });
-    setSaving(false);
+    e.preventDefault()
+    if (!date || !duration) return
+
+    setSaving(true)
+    try {
+      const session = {
+        date,
+        duration: Number(duration),
+        week: week ? Number(week) : null,
+        topics: selectedTopics,
+        notes: notes.trim(),
+        createdAt: new Date().toISOString(),
+      }
+      await addSession(session)
+      onSessionAdded(session)
+
+      // Reset form
+      setDuration('')
+      setWeek('')
+      setSelectedTopics([])
+      setNotes('')
+      setSuccess(true)
+      setTimeout(() => setSuccess(false), 3000)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSaving(false)
+    }
   }
-
-  function set(field, val) {
-    setForm((f) => ({ ...f, [field]: val }));
-    setErrors((e) => ({ ...e, [field]: undefined }));
-  }
-
-  const timerHours = Math.floor(timer / 3600);
-  const timerMin = Math.floor((timer % 3600) / 60);
-  const timerSec = timer % 60;
-  const timerStr = `${String(timerHours).padStart(2, "0")}:${String(timerMin).padStart(2, "0")}:${String(timerSec).padStart(2, "0")}`;
-
-  const selectedTopic = curriculum.find((t) => t.id === Number(form.topicId));
 
   return (
-    <div className="form-page">
-      <div className="form-card">
-        <div className="form-header">
-          <h2>{editLog ? "Editar registro" : "Registrar dia de estudo"}</h2>
-          <p>Documente o que você aprendeu hoje</p>
+    <div className="page-enter" style={{ display: 'flex', justifyContent: 'center' }}>
+      <div className="log-form-card">
+        <div className="log-form-title">Registrar sessão</div>
+        <div className="log-form-subtitle">
+          Documente o que você estudou hoje para manter o progresso visível.
         </div>
 
-        {/* Pomodoro timer */}
-        <div className="timer-box">
-          <div className="timer-display">{timerStr}</div>
-          <div className="timer-controls">
-            <button type="button" className="timer-btn" onClick={() => setTimerRunning(!timerRunning)}>
-              {timerRunning ? "⏸ Pausar" : "▶ Iniciar"}
-            </button>
-            <button type="button" className="timer-btn" onClick={() => { setTimer(0); setTimerRunning(false); }}>
-              ↺ Zerar
-            </button>
-            {timer > 0 && (
-              <button type="button" className="timer-btn accent" onClick={() => set("hours", (Math.round((timer / 3600) * 10) / 10).toString())}>
-                ✓ Usar {(Math.round((timer / 3600) * 10) / 10)}h
-              </button>
-            )}
+        {success && (
+          <div className="toast success" style={{ position: 'relative', top: 'auto', left: 'auto', transform: 'none', marginBottom: 'var(--space-5)', textAlign: 'center', animation: 'fadeSlideUp 0.3s both' }}>
+            ✓ Sessão registrada com sucesso!
           </div>
-        </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="study-form">
-          <div className="form-row">
-            <div className={`form-group ${errors.date ? "has-error" : ""}`}>
-              <label>Data *</label>
-              <input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} max={today} />
-              {errors.date && <span className="field-error">{errors.date}</span>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label htmlFor="date">Data</label>
+              <input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                required
+              />
             </div>
-            <div className={`form-group ${errors.hours ? "has-error" : ""}`}>
-              <label>Horas estudadas *</label>
-              <input type="number" min="0.1" max="24" step="0.1" placeholder="ex: 2.5" value={form.hours} onChange={(e) => set("hours", e.target.value)} />
-              {errors.hours && <span className="field-error">{errors.hours}</span>}
+
+            <div className="form-group">
+              <label htmlFor="duration">Duração (horas)</label>
+              <input
+                id="duration"
+                type="number"
+                min="0.5"
+                max="24"
+                step="0.5"
+                placeholder="ex: 2"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                required
+              />
             </div>
-          </div>
 
-          <div className={`form-group ${errors.topicId ? "has-error" : ""}`}>
-            <label>Tópico estudado *</label>
-            <select value={form.topicId} onChange={(e) => set("topicId", e.target.value)}>
-              <option value="">Selecione um tópico...</option>
-              {curriculum.map((t) => (
-                <option key={t.id} value={t.id}>
-                  Sem {t.week} · {t.icon} {t.title}
-                </option>
-              ))}
-            </select>
-            {errors.topicId && <span className="field-error">{errors.topicId}</span>}
-          </div>
-
-          {selectedTopic && (
-            <div className="topic-hint">
-              <strong>{selectedTopic.icon} {selectedTopic.title}</strong> — {selectedTopic.subtitle}
-              <div className="hint-resources">
-                {selectedTopic.resources.map((r) => (
-                  <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer">
-                    {r.type === "youtube" ? "▶" : "🎓"} {r.label}
-                  </a>
+            <div className="form-group full">
+              <label htmlFor="week">Semana do currículo (opcional)</label>
+              <select
+                id="week"
+                value={week}
+                onChange={(e) => { setWeek(e.target.value); setSelectedTopics([]) }}
+              >
+                <option value="">Selecione uma semana...</option>
+                {curriculum.map((w) => (
+                  <option key={w.week} value={w.week}>
+                    Semana {w.week} — {w.title}
+                  </option>
                 ))}
+              </select>
+            </div>
+
+            {weekData && (
+              <div className="form-group full">
+                <label>Tópicos estudados</label>
+                <div className="topics-grid">
+                  {weekData.topics.map((topic) => (
+                    <label key={topic} className={`topic-chip${selectedTopics.includes(topic) ? ' selected' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTopics.includes(topic)}
+                        onChange={() => toggleTopic(topic)}
+                      />
+                      {topic}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className={`form-group ${errors.concepts ? "has-error" : ""}`}>
-            <label>Conceitos-chave aprendidos *</label>
-            <textarea rows={3} placeholder="O que você aprendeu? Ex: aprendi como usar pandas para filtrar DataFrames com loc e iloc..." value={form.concepts} onChange={(e) => set("concepts", e.target.value)} />
-            {errors.concepts && <span className="field-error">{errors.concepts}</span>}
-          </div>
-
-          <div className="form-group">
-            <label>Links / recursos usados</label>
-            <input type="text" placeholder="URLs separadas por vírgula ou descrição dos materiais" value={form.resources} onChange={(e) => set("resources", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Notas e anotações livres</label>
-            <textarea rows={3} placeholder="Dúvidas, insights, próximos passos..." value={form.notes} onChange={(e) => set("notes", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Nível de dificuldade: <strong>{DIFFICULTY_LABELS[form.difficulty]}</strong></label>
-            <div className="difficulty-stars">
-              {[1, 2, 3, 4, 5].map((n) => (
-                <button key={n} type="button" className={`star ${form.difficulty >= n ? "active" : ""}`} onClick={() => set("difficulty", n)}>
-                  ★
-                </button>
-              ))}
+            <div className="form-group full">
+              <label htmlFor="notes">Anotações (opcional)</label>
+              <textarea
+                id="notes"
+                placeholder="O que você aprendeu? Quais dificuldades encontrou?"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                maxLength={500}
+              />
+              <span className="field-help">{notes.length}/500 caracteres</span>
             </div>
           </div>
 
-          <div className="form-actions">
-            <button type="button" className="btn-secondary" onClick={onCancel}>Cancelar</button>
-            <button type="submit" className="btn-primary" disabled={saving}>
-              {saving ? "Salvando..." : editLog ? "Atualizar" : "Registrar dia ✓"}
+          <div style={{ marginTop: 'var(--space-6)' }}>
+            <button
+              type="submit"
+              className="btn btn-primary btn-full"
+              disabled={saving || !date || !duration}
+            >
+              {saving ? 'Salvando...' : 'Salvar sessão'}
             </button>
           </div>
         </form>
       </div>
     </div>
-  );
+  )
 }

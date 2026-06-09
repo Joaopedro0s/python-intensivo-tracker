@@ -1,129 +1,79 @@
-import { useState, useEffect, useCallback } from "react";
-import { getLogs, addLog, updateLog, deleteLog } from "./db";
-import { CURRICULUM, BADGES } from "./data/curriculum";
-import { computeStats, getEarnedBadges, exportJSON } from "./utils/stats";
-import Header from "./components/Header";
-import Dashboard from "./components/Dashboard";
-import Roadmap from "./components/Roadmap";
-import LogForm from "./components/LogForm";
-import History from "./components/History";
-import Badges from "./components/Badges";
-import "./index.css";
+import { useState, useEffect } from 'react'
+import Header from './components/Header'
+import Dashboard from './components/Dashboard'
+import LogForm from './components/LogForm'
+import History from './components/History'
+import Roadmap from './components/Roadmap'
+import Badges from './components/Badges'
+import { getSessions } from './db'
 
 export default function App() {
-  const [page, setPage] = useState("dashboard");
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [editLog, setEditLog] = useState(null);
-  const [notification, setNotification] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard')
+  const [sessions, setSessions] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getLogs();
-      setLogs(data);
-    } catch (e) {
-      showNotification("Erro ao carregar dados. Verifique sua conexão.", "error");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    getSessions()
+      .then(setSessions)
+      .catch(console.error)
+      .finally(() => setLoading(false))
+  }, [])
+
+  function handleSessionAdded(session) {
+    setSessions((prev) => [{ ...session, id: Date.now().toString() }, ...prev])
+    setActiveTab('dashboard')
+  }
+
+  function handleSessionDeleted(id) {
+    setSessions((prev) => prev.filter((s) => s.id !== id))
+  }
+
+  function renderPage() {
+    if (loading) {
+      return (
+        <div className="loading-state">
+          <div className="loading-spinner" />
+          <span>Carregando sessões...</span>
+        </div>
+      )
     }
-  }, []);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
-
-  function showNotification(msg, type = "success") {
-    setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3500);
-  }
-
-  async function handleSaveLog(logData) {
-    try {
-      if (editLog) {
-        await updateLog(editLog.id, logData);
-        showNotification("Registro atualizado! ✅");
-      } else {
-        await addLog(logData);
-        showNotification("Dia registrado com sucesso! 🎉");
-      }
-      setEditLog(null);
-      setPage("history");
-      await fetchLogs();
-    } catch (e) {
-      showNotification("Erro ao salvar. Tente novamente.", "error");
+    switch (activeTab) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            sessions={sessions}
+            onNavigate={setActiveTab}
+          />
+        )
+      case 'log':
+        return (
+          <LogForm onSessionAdded={handleSessionAdded} />
+        )
+      case 'history':
+        return (
+          <History
+            sessions={sessions}
+            onSessionDeleted={handleSessionDeleted}
+          />
+        )
+      case 'roadmap':
+        return <Roadmap sessions={sessions} />
+      case 'badges':
+        return <Badges sessions={sessions} />
+      default:
+        return null
     }
   }
-
-  async function handleDeleteLog(id) {
-    if (!confirm("Remover este registro?")) return;
-    try {
-      await deleteLog(id);
-      showNotification("Registro removido.");
-      await fetchLogs();
-    } catch (e) {
-      showNotification("Erro ao remover.", "error");
-    }
-  }
-
-  function handleEdit(log) {
-    setEditLog(log);
-    setPage("form");
-  }
-
-  const stats = computeStats(logs);
-  const earnedBadges = getEarnedBadges(stats, BADGES);
 
   return (
-    <div className="app">
-      <Header page={page} setPage={setPage} stats={stats} />
-
-      {notification && (
-        <div className={`notification ${notification.type}`}>
-          {notification.msg}
-        </div>
-      )}
-
+    <div className="app-wrapper">
+      <Header activeTab={activeTab} onTabChange={setActiveTab} />
       <main className="main-content">
-        {loading ? (
-          <div className="loading-screen">
-            <div className="spinner" />
-            <p>Carregando seu progresso...</p>
-          </div>
-        ) : (
-          <>
-            {page === "dashboard" && (
-              <Dashboard stats={stats} logs={logs} curriculum={CURRICULUM} earnedBadges={earnedBadges} setPage={setPage} />
-            )}
-            {page === "roadmap" && (
-              <Roadmap curriculum={CURRICULUM} logs={logs} />
-            )}
-            {page === "form" && (
-              <LogForm
-                curriculum={CURRICULUM}
-                onSave={handleSaveLog}
-                onCancel={() => { setEditLog(null); setPage("dashboard"); }}
-                editLog={editLog}
-              />
-            )}
-            {page === "history" && (
-              <History logs={logs} curriculum={CURRICULUM} onEdit={handleEdit} onDelete={handleDeleteLog} />
-            )}
-            {page === "badges" && (
-              <Badges earnedBadges={earnedBadges} allBadges={BADGES} stats={stats} />
-            )}
-          </>
-        )}
+        <div className="container">
+          {renderPage()}
+        </div>
       </main>
-
-      <button className="fab" onClick={() => { setEditLog(null); setPage("form"); }} title="Registrar dia de estudo">
-        +
-      </button>
-
-      <footer className="footer">
-        <button className="export-btn" onClick={() => exportJSON(logs, CURRICULUM)}>
-          ⬇ Exportar backup JSON
-        </button>
-        <span className="footer-note">Dados salvos no Firebase · {logs.length} registros</span>
-      </footer>
     </div>
-  );
+  )
 }
