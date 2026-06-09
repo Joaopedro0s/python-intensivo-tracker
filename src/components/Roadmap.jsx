@@ -1,82 +1,88 @@
-import { curriculum } from '../data/curriculum'
-import { getTopicsCompleted } from '../utils/stats'
+import { useMemo, useState } from "react";
 
-export default function Roadmap({ sessions }) {
-  // Gather all covered topics
-  const coveredTopics = new Set()
-  sessions.forEach((s) => {
-    if (s.topics) s.topics.forEach((t) => coveredTopics.add(t))
-  })
+export default function Roadmap({ curriculum, logs }) {
+  const [expanded, setExpanded] = useState(null);
 
-  // Which weeks have sessions
-  const studiedWeeks = new Set(sessions.map((s) => s.week).filter(Boolean))
+  const coveredTopics = useMemo(() => new Set(logs.map((l) => Number(l.topicId))), [logs]);
 
-  function getWeekStatus(week) {
-    const allTopicsCovered = week.topics.every((t) => coveredTopics.has(t))
-    if (allTopicsCovered && week.topics.length > 0) return 'completed'
-    if (studiedWeeks.has(week.week)) return 'in-progress'
-    return 'pending'
-  }
-
-  function getCoveredCount(week) {
-    return week.topics.filter((t) => coveredTopics.has(t)).length
-  }
+  const weeks = useMemo(() => {
+    const w = {};
+    curriculum.forEach((t) => {
+      if (!w[t.week]) w[t.week] = [];
+      w[t.week].push(t);
+    });
+    return w;
+  }, [curriculum]);
 
   return (
-    <div className="page-enter">
-      <div className="section-header" style={{ marginBottom: 'var(--space-6)' }}>
-        <span className="section-title">Roadmap do currículo</span>
-        <span className="section-badge">{curriculum.length} semanas</span>
+    <div className="roadmap">
+      <div className="roadmap-header">
+        <h2>Roadmap — Python para IA, Dados & Automação</h2>
+        <p>4 semanas · 15 tópicos · ~{curriculum.reduce((s, t) => s + t.estimatedHours, 0)}h estimadas</p>
       </div>
 
-      <div className="roadmap-grid">
-        {curriculum.map((week, i) => {
-          const status = getWeekStatus(week)
-          const covered = getCoveredCount(week)
-          const pct = Math.round((covered / week.topics.length) * 100)
+      {Object.entries(weeks).map(([week, topics]) => (
+        <div key={week} className="roadmap-week">
+          <div className="week-label">
+            <span className="week-num">Semana {week}</span>
+            <span className="week-est">{topics.reduce((s, t) => s + t.estimatedHours, 0)}h estimadas</span>
+          </div>
 
-          return (
-            <div
-              key={week.week}
-              className={`week-card ${status}`}
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <div className="week-header">
-                <div>
-                  <div className="week-number">Semana {week.week}</div>
-                  <div className="week-title">{week.title}</div>
-                </div>
-                <span className={`week-status-badge ${status === 'completed' ? 'done' : status === 'in-progress' ? 'active' : 'pending'}`}>
-                  {status === 'completed' ? '✓ Concluída' : status === 'in-progress' ? 'Em andamento' : 'Pendente'}
-                </span>
-              </div>
+          <div className="week-topics">
+            {topics.map((topic, idx) => {
+              const done = coveredTopics.has(topic.id);
+              const isOpen = expanded === topic.id;
+              return (
+                <div key={topic.id} className={`roadmap-topic ${done ? "done" : ""}`}>
+                  {/* connector line */}
+                  {idx < topics.length - 1 && <div className="connector" style={{ background: topic.color }} />}
 
-              <ul className="week-topics-list">
-                {week.topics.map((topic) => (
-                  <li
-                    key={topic}
-                    className={`week-topic-item${coveredTopics.has(topic) ? ' covered' : ''}`}
-                  >
-                    {topic}
-                  </li>
-                ))}
-              </ul>
+                  <div className="topic-node" style={{ borderColor: topic.color }}>
+                    <div className="topic-node-header" onClick={() => setExpanded(isOpen ? null : topic.id)}>
+                      <div className="topic-node-left">
+                        <span className="topic-num" style={{ background: done ? topic.color : undefined }}>
+                          {done ? "✓" : topic.id}
+                        </span>
+                        <span className="topic-icon">{topic.icon}</span>
+                        <div>
+                          <div className="topic-title">{topic.title}</div>
+                          <div className="topic-subtitle">{topic.subtitle}</div>
+                        </div>
+                      </div>
+                      <div className="topic-node-right">
+                        <span className="topic-est">{topic.estimatedHours}h</span>
+                        {done && <span className="done-badge">✓ Estudado</span>}
+                        <span className="expand-icon">{isOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </div>
 
-              {covered > 0 && (
-                <div className="week-progress-wrapper">
-                  <div className="week-progress-label">
-                    <span>{covered}/{week.topics.length} tópicos</span>
-                    <span>{pct}%</span>
+                    {isOpen && (
+                      <div className="topic-detail">
+                        <div className="topic-keys">
+                          <strong>Tópicos-chave:</strong>
+                          <ul>
+                            {topic.keyTopics.map((k) => <li key={k}>{k}</li>)}
+                          </ul>
+                        </div>
+                        <div className="topic-resources">
+                          <strong>Recursos gratuitos:</strong>
+                          <div className="resource-list">
+                            {topic.resources.map((r) => (
+                              <a key={r.url} href={r.url} target="_blank" rel="noopener noreferrer" className={`resource-link ${r.type}`}>
+                                {r.type === "youtube" ? "▶ YouTube" : "🎓 Curso"} — {r.label}
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill" style={{ width: `${pct}%` }} />
-                  </div>
                 </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
-  )
+  );
 }
